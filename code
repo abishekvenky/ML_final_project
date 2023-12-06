@@ -1,0 +1,87 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, accuracy_score
+from sklearn.pipeline import Pipeline
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
+nltk.download('punkt')
+nltk.download('stopwords')
+
+def preprocess_text(text):
+    tokens = word_tokenize(text.lower())
+    words = [word for word in tokens if word.isalpha()]
+    stop_words = set(stopwords.words('english'))
+    filtered_words = [w for w in words if not w in stop_words]
+    return ' '.join(filtered_words)
+
+def load_dataset(file_path):
+    df = pd.read_csv(file_path)
+    df['text'] = df['text'].astype(str)
+    return df
+
+def preprocess_dataset(df):
+    df['text_clean'] = df['text'].apply(preprocess_text)
+    return df
+
+def tune_logistic_regression(X_train, y_train):
+    pipeline = Pipeline([
+        ('tfidf', TfidfVectorizer()),
+        ('classifier', LogisticRegression(max_iter=10000)),
+    ])
+    
+    param_grid = {
+        'classifier__C': [0.01, 0.1, 1, 10, 100],  
+        'classifier__penalty': ['l2'], 
+    }
+    
+    grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy')
+    grid_search.fit(X_train, y_train)
+    
+    return grid_search.best_estimator_, grid_search.best_params_
+
+def tune_svm(X_train, y_train):
+    pipeline = Pipeline([
+        ('tfidf', TfidfVectorizer()),
+        ('classifier', SVC()),
+    ])
+    
+    param_grid = {
+        'classifier__C': [0.1, 1, 10],  
+        'classifier__gamma': ['scale', 'auto'],  
+    }
+    
+    grid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy')
+    grid_search.fit(X_train, y_train)
+    
+    return grid_search.best_estimator_, grid_search.best_params_
+
+def main(file_path):
+    df = load_dataset(file_path)
+    df = preprocess_dataset(df)
+    
+    X_train, X_test, y_train, y_test = train_test_split(
+        df['text_clean'], df['sentiment'], test_size=0.2, random_state=42)
+    
+    tuned_lr, lr_params = tune_logistic_regression(X_train, y_train)
+    lr_predictions = tuned_lr.predict(X_test)
+    lr_accuracy = accuracy_score(y_test, lr_predictions)
+    print("Logistic Regression Classification Report:")
+    print(classification_report(y_test, lr_predictions))
+    print(f"Logistic Regression Accuracy: {lr_accuracy}")
+    print(f"Best Logistic Regression Parameters: {lr_params}")
+    
+    tuned_svm, svm_params = tune_svm(X_train, y_train)
+    svm_predictions = tuned_svm.predict(X_test)
+    svm_accuracy = accuracy_score(y_test, svm_predictions)
+    print("SVM Classification Report:")
+    print(classification_report(y_test, svm_predictions))
+    print(f"SVM Accuracy: {svm_accuracy}")
+    print(f"Best SVM Parameters: {svm_params}")
+
+if __name__ == "__main__":
+    main('Tweets.csv') 
